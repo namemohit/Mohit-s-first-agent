@@ -396,3 +396,151 @@ def list_ads(ad_set_id: str, status_filter: str = "ALL") -> list[dict]:
 
     ads = ad_set.get_ads(fields=fields, params=params)
     return [dict(a) for a in ads]
+
+
+# ---------------------------------------------------------------------------
+# Optimisation / analysis tools
+# ---------------------------------------------------------------------------
+
+def get_adset_insights(
+    campaign_id: str,
+    date_preset: str = "last_30d",
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict]:
+    """
+    Get performance insights broken down by ad set within a campaign.
+    Use this to compare ad sets and identify winners / losers.
+
+    Args:
+        campaign_id: The parent campaign ID.
+        date_preset: Pre-defined date range (last_7d, last_30d, etc.).
+        start_date: Start date YYYY-MM-DD (overrides date_preset).
+        end_date: End date YYYY-MM-DD (overrides date_preset).
+
+    Returns:
+        List of insight rows, one per ad set.
+    """
+    _init_api()
+    campaign = Campaign(campaign_id)
+
+    fields = [
+        AdsInsights.Field.adset_id,
+        AdsInsights.Field.adset_name,
+        AdsInsights.Field.impressions,
+        AdsInsights.Field.reach,
+        AdsInsights.Field.frequency,
+        AdsInsights.Field.clicks,
+        AdsInsights.Field.ctr,
+        AdsInsights.Field.spend,
+        AdsInsights.Field.cpm,
+        AdsInsights.Field.cpc,
+        AdsInsights.Field.actions,
+        AdsInsights.Field.cost_per_action_type,
+        AdsInsights.Field.date_start,
+        AdsInsights.Field.date_stop,
+    ]
+
+    params: dict[str, Any] = {"level": "adset"}
+    if start_date and end_date:
+        params["time_range"] = {"since": start_date, "until": end_date}
+    else:
+        params["date_preset"] = date_preset
+
+    insights = campaign.get_insights(fields=fields, params=params)
+    return [dict(row) for row in insights]
+
+
+def get_ad_insights(
+    campaign_id: str,
+    date_preset: str = "last_30d",
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict]:
+    """
+    Get performance insights broken down by individual ad (creative) within a campaign.
+    Use this to find the best and worst performing creatives.
+
+    Args:
+        campaign_id: The parent campaign ID.
+        date_preset: Pre-defined date range (last_7d, last_30d, etc.).
+        start_date: Start date YYYY-MM-DD (overrides date_preset).
+        end_date: End date YYYY-MM-DD (overrides date_preset).
+
+    Returns:
+        List of insight rows, one per ad.
+    """
+    _init_api()
+    campaign = Campaign(campaign_id)
+
+    fields = [
+        AdsInsights.Field.ad_id,
+        AdsInsights.Field.ad_name,
+        AdsInsights.Field.adset_id,
+        AdsInsights.Field.adset_name,
+        AdsInsights.Field.impressions,
+        AdsInsights.Field.reach,
+        AdsInsights.Field.frequency,
+        AdsInsights.Field.clicks,
+        AdsInsights.Field.ctr,
+        AdsInsights.Field.spend,
+        AdsInsights.Field.cpm,
+        AdsInsights.Field.cpc,
+        AdsInsights.Field.actions,
+        AdsInsights.Field.cost_per_action_type,
+        AdsInsights.Field.date_start,
+        AdsInsights.Field.date_stop,
+    ]
+
+    params: dict[str, Any] = {"level": "ad"}
+    if start_date and end_date:
+        params["time_range"] = {"since": start_date, "until": end_date}
+    else:
+        params["date_preset"] = date_preset
+
+    insights = campaign.get_insights(fields=fields, params=params)
+    return [dict(row) for row in insights]
+
+
+def get_campaign_insights_over_time(
+    campaign_id: str,
+    date_preset: str = "last_30d",
+    time_increment: int = 7,
+) -> list[dict]:
+    """
+    Get campaign insights split into time intervals to reveal performance trends.
+    Useful for detecting ad fatigue (rising CPM/frequency, falling CTR over time).
+
+    Args:
+        campaign_id: The campaign ID.
+        date_preset: Date range to analyse (last_30d, last_90d, etc.).
+        time_increment: Number of days per interval (1=daily, 7=weekly).
+
+    Returns:
+        List of insight rows, one per time interval.
+    """
+    _init_api()
+    campaign = Campaign(campaign_id)
+
+    fields = [
+        AdsInsights.Field.impressions,
+        AdsInsights.Field.reach,
+        AdsInsights.Field.frequency,
+        AdsInsights.Field.clicks,
+        AdsInsights.Field.ctr,
+        AdsInsights.Field.spend,
+        AdsInsights.Field.cpm,
+        AdsInsights.Field.cpc,
+        AdsInsights.Field.actions,
+        AdsInsights.Field.date_start,
+        AdsInsights.Field.date_stop,
+    ]
+
+    params: dict[str, Any] = {
+        "level": "campaign",
+        "date_preset": date_preset,
+        "time_increment": time_increment,
+    }
+
+    insights = campaign.get_insights(fields=fields, params=params)
+    return [dict(row) for row in insights]

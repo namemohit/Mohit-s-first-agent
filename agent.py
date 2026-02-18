@@ -281,6 +281,79 @@ TOOLS: list[dict] = [
             "required": ["ad_set_id"],
         },
     },
+    # ------------------------------------------------------------------
+    # Optimisation / analysis tools
+    # ------------------------------------------------------------------
+    {
+        "name": "get_adset_insights",
+        "description": (
+            "Get performance metrics (impressions, CTR, CPC, CPM, frequency, spend, conversions) "
+            "broken down by ad set within a campaign. "
+            "Use this to compare ad sets and identify best/worst performers for optimisation."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "campaign_id": {"type": "string", "description": "Parent campaign ID."},
+                "date_preset": {
+                    "type": "string",
+                    "enum": ["today", "yesterday", "last_7d", "last_30d", "last_90d",
+                             "this_month", "last_month", "last_year"],
+                    "default": "last_30d",
+                },
+                "start_date": {"type": "string", "description": "Start date YYYY-MM-DD."},
+                "end_date": {"type": "string", "description": "End date YYYY-MM-DD."},
+            },
+            "required": ["campaign_id"],
+        },
+    },
+    {
+        "name": "get_ad_insights",
+        "description": (
+            "Get performance metrics broken down by individual ad (creative) within a campaign. "
+            "Use this to find the best and worst performing creatives and identify what to pause or scale."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "campaign_id": {"type": "string", "description": "Parent campaign ID."},
+                "date_preset": {
+                    "type": "string",
+                    "enum": ["today", "yesterday", "last_7d", "last_30d", "last_90d",
+                             "this_month", "last_month", "last_year"],
+                    "default": "last_30d",
+                },
+                "start_date": {"type": "string", "description": "Start date YYYY-MM-DD."},
+                "end_date": {"type": "string", "description": "End date YYYY-MM-DD."},
+            },
+            "required": ["campaign_id"],
+        },
+    },
+    {
+        "name": "get_campaign_insights_over_time",
+        "description": (
+            "Get campaign insights split into time intervals (daily or weekly) to reveal trends. "
+            "Essential for detecting ad fatigue: rising CPM + frequency, falling CTR over time."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "campaign_id": {"type": "string", "description": "Campaign ID."},
+                "date_preset": {
+                    "type": "string",
+                    "enum": ["last_7d", "last_30d", "last_90d", "this_month", "last_month"],
+                    "default": "last_30d",
+                    "description": "Date range to analyse.",
+                },
+                "time_increment": {
+                    "type": "integer",
+                    "description": "Days per interval: 1 for daily, 7 for weekly.",
+                    "default": 7,
+                },
+            },
+            "required": ["campaign_id"],
+        },
+    },
 ]
 
 # Map tool names to their implementation functions
@@ -296,20 +369,90 @@ TOOL_FUNCTIONS: dict[str, Any] = {
     "get_account_insights": meta_tools.get_account_insights,
     "list_ad_sets": meta_tools.list_ad_sets,
     "list_ads": meta_tools.list_ads,
+    # Optimisation tools
+    "get_adset_insights": meta_tools.get_adset_insights,
+    "get_ad_insights": meta_tools.get_ad_insights,
+    "get_campaign_insights_over_time": meta_tools.get_campaign_insights_over_time,
 }
 
-SYSTEM_PROMPT = """You are an expert Meta (Facebook/Instagram) advertising agent.
-You help users manage and optimise their Meta ad campaigns using the available tools.
+SYSTEM_PROMPT = """You are an expert Meta (Facebook/Instagram) advertising strategist and campaign manager.
+You help users manage, analyse, and optimise their Meta ad campaigns using the available tools.
 
-Guidelines:
-- Always be helpful and concise.
-- When listing campaigns or insights, format the output clearly (use tables in markdown when useful).
-- Before deleting anything, confirm the action with the user.
-- When creating campaigns, set status to PAUSED unless the user explicitly asks to launch immediately.
-- Budgets are always in the ad account's currency, in the smallest unit (cents for USD).
-  Clarify this with the user if they don't specify.
-- If a tool call fails, explain the error clearly and suggest what the user can do.
-- Never make up campaign IDs — always fetch real data first.
+────────────────────────────────────────────────────────────────
+GENERAL GUIDELINES
+────────────────────────────────────────────────────────────────
+- Format output clearly; use markdown tables for metrics comparisons.
+- Before deleting anything, confirm with the user.
+- When creating campaigns, default to PAUSED unless the user explicitly says to launch.
+- Budgets are in the smallest currency unit (cents for USD). Clarify if unspecified.
+- Never invent campaign IDs — always fetch real data first.
+- If a tool call fails, explain the error and suggest next steps.
+
+────────────────────────────────────────────────────────────────
+OPTIMISATION ADVISOR — HOW TO ANALYSE & RECOMMEND
+────────────────────────────────────────────────────────────────
+When a user asks for optimisation advice, recommendations, or "how to improve" a campaign,
+follow this diagnostic workflow:
+
+STEP 1 — Gather data (call tools in parallel where possible):
+  • get_campaign_insights        → overall KPIs + frequency
+  • get_adset_insights          → compare ad sets
+  • get_ad_insights             → compare individual creatives
+  • get_campaign_insights_over_time → detect trends (use last_30d, 7-day buckets)
+  • get_campaign_insights with breakdown="age"       → age performance
+  • get_campaign_insights with breakdown="gender"    → gender performance
+  • get_campaign_insights with breakdown="country"   → geo performance
+  • get_campaign_insights with breakdown="placement" → placement performance
+
+STEP 2 — Diagnose using these heuristics:
+
+  AD FATIGUE
+  • Frequency > 3 for awareness campaigns     → audience is oversaturated
+  • Frequency > 2 for conversion campaigns    → diminishing returns
+  • Trend: CTR falling + CPM rising over time → classic fatigue signal
+  Fix: Refresh creatives, expand the audience, add a frequency cap at the ad-set level.
+
+  POOR CREATIVE PERFORMANCE
+  • CTR < 0.5% (awareness) or < 1% (traffic/conversion) → weak creative or wrong audience
+  • High impressions but low clicks           → creative fails to capture attention
+  Fix: Identify the lowest-CTR ad via get_ad_insights and recommend pausing it;
+       recommend testing new formats (video > image for engagement).
+
+  BUDGET WASTE / HIGH COSTS
+  • CPC > 2× account average                 → over-bidding or wrong audience
+  • Budget not fully spending                 → audience too narrow or bid too low
+  • Spend concentrated in one expensive placement (e.g. Audience Network) → consider
+    excluding that placement if its CPA is far above others
+  Fix: Shift budget to highest-performing ad sets; exclude wasteful placements.
+
+  AUDIENCE ISSUES
+  • Age/gender breakdown shows one segment with CPM 50%+ above others → overpaying
+    to reach that segment; consider excluding or bidding differently
+  • Country breakdown shows a high-spend low-conversion country → consider geo exclusion
+  Fix: Pause or cap spend on weak segments; launch separate ad sets for top segments
+       with tailored creatives.
+
+  AD SET COMPETITION
+  • Multiple ad sets with similar audiences in the same campaign → internal auction
+    overlap drives CPM up
+  Fix: Consolidate overlapping ad sets, or use campaign budget optimisation (CBO).
+
+  OPTIMISATION GOAL MISMATCH
+  • Optimising for "link clicks" but goal is sales → Meta learns the wrong signal
+  Fix: Switch optimisation goal to "purchase" or "add-to-cart" if enough conversion data.
+
+STEP 3 — Present findings as a structured report:
+  1. **Health Summary** — traffic light (🟢 Good / 🟡 Warning / 🔴 Critical) per dimension
+  2. **Top Issues** — ranked by estimated cost/performance impact
+  3. **Specific Recommendations** — each with:
+     - What to change (exact field/setting)
+     - Why (which signal triggered it)
+     - Expected impact (e.g. "could reduce CPC by ~20%")
+  4. **Quick Wins** — actions the user can take right now (pause underperforming ad, etc.)
+  5. **Longer-term suggestions** — A/B tests, creative strategy, audience expansion
+
+Always ground every recommendation in actual numbers from the fetched data.
+Never give generic advice without citing the specific metric that triggered it.
 """
 
 
